@@ -1,0 +1,131 @@
+#include "physics/BulletVehicleAdapter.h"
+
+#ifndef REVC_WITH_BULLET
+#define REVC_WITH_BULLET 0
+#endif
+
+namespace reVC {
+namespace physics {
+
+struct BulletVehicleAdapter::Impl {
+    float gravity;
+};
+
+BulletVehicleAdapter::BulletVehicleAdapter()
+    : impl_(new Impl())
+{
+    impl_->gravity = 9.81f;
+}
+
+BulletVehicleAdapter::~BulletVehicleAdapter() = default;
+
+bool BulletVehicleAdapter::Initialize()
+{
+    return true;
+}
+
+void BulletVehicleAdapter::ResetWorld()
+{
+}
+
+void BulletVehicleAdapter::StepSimulation(float dt)
+{
+    (void)dt;
+}
+
+void BulletVehicleAdapter::SetGravity(float gravity)
+{
+    impl_->gravity = gravity;
+}
+
+void BulletVehicleAdapter::SetPosition(float x, float y, float z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+} // namespace physics
+} // namespace reVC
+
+#if REVC_WITH_BULLET
+#include <btBulletDynamicsCommon.h>
+#include <BulletDynamics/Vehicle/btRaycastVehicle.h>
+#include <BulletCollision/CollisionShapes/btBoxShape.h>
+
+namespace reVC {
+namespace physics {
+
+// Full Bullet-backed implementation is intentionally kept behind the feature flag.
+// This allows the repository to compile cleanly while remaining ready for a real
+// vehicle integration pass.
+
+struct BulletVehicleAdapter::Impl {
+    btDefaultCollisionConfiguration collisionConfiguration;
+    btCollisionDispatcher dispatcher;
+    btDbvtBroadphase broadphase;
+    btSequentialImpulseConstraintSolver solver;
+    btDiscreteDynamicsWorld world;
+    btRaycastVehicle::btVehicleTuning tuning;
+    btVehicleRaycaster* vehicleRaycaster;
+    btRaycastVehicle* vehicle;
+    float gravity;
+
+    Impl()
+        : dispatcher(&collisionConfiguration)
+        , world(&dispatcher, &broadphase, &solver, &collisionConfiguration)
+        , vehicleRaycaster(nullptr)
+        , vehicle(nullptr)
+        , gravity(9.81f)
+    {
+    }
+};
+
+BulletVehicleAdapter::BulletVehicleAdapter()
+    : impl_(new Impl())
+{
+    impl_->world.setGravity(btVector3(0.0f, -impl_->gravity, 0.0f));
+}
+
+BulletVehicleAdapter::~BulletVehicleAdapter() = default;
+
+bool BulletVehicleAdapter::Initialize()
+{
+    return true;
+}
+
+void BulletVehicleAdapter::ResetWorld()
+{
+    impl_->world.clearForces();
+}
+
+void BulletVehicleAdapter::StepSimulation(float dt)
+{
+    impl_->world.stepSimulation(dt, 1, 1.0f / 60.0f);
+}
+
+void BulletVehicleAdapter::SetGravity(float gravity)
+{
+    impl_->gravity = gravity;
+    impl_->world.setGravity(btVector3(0.0f, -gravity, 0.0f));
+}
+
+void BulletVehicleAdapter::SetPosition(float x, float y, float z)
+{
+    if (impl_->vehicle == nullptr) {
+        return;
+    }
+
+    btTransform transform;
+    transform.setIdentity();
+    transform.setOrigin(btVector3(x, y, z));
+    impl_->vehicle->getChassisWorldTransform().setOrigin(btVector3(x, y, z));
+    impl_->vehicle->setCoordinateSystem(0, 1, 2);
+    (void)transform;
+}
+
+} // namespace physics
+} // namespace reVC
+#endif
+
+
